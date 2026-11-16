@@ -9,12 +9,12 @@ from typing import ClassVar
 
 import numpy as np
 
-from gfo.problems._batch import as_batch, finish_batch
+from gfo.problems.interface import IProblem, validate_points
 
 
 @dataclass(slots=True)
-class Sphere:
-    """Sphere problem (vectorized).
+class Sphere(IProblem):
+    """Sphere problem.
 
     Attributes
     ----------
@@ -22,24 +22,21 @@ class Sphere:
         Location of the minimum in every dimension. Shifted off the centre
         because swarms are biased towards it.
     lo, hi : float
-        Default bounds (every dimension).
+        Default bounds, the same in every dimension.
     """
 
     name: ClassVar[str] = "Sphere"
+    f_opt: ClassVar[float] = 0.0
     shift: float = 2.0
     lo: float = -5.12
     hi: float = 5.12
 
-    def __call__(self, x) -> np.ndarray | float:
-        """Evaluate one point ``(d,)`` (float) or a batch ``(n, d)`` (n values)."""
-        batch, single = as_batch(x)
-        shifted = batch - self.shift
-        return finish_batch(np.sum(shifted * shifted, axis=1), single)
+    def evaluate(self, points: np.ndarray) -> np.ndarray:
+        """Evaluate every row of ``points``, shape (n, d). Returns shape (n,)."""
+        batch: np.ndarray = validate_points(points)
+        shifted: np.ndarray = batch - self.shift
+        return np.sum(shifted * shifted, axis=1)
 
-    def x_opt(self, d: int) -> np.ndarray:
-        """Location of the known minimum in ``d`` dimensions."""
+    def calc_x_opt(self, d: int) -> np.ndarray:
+        """Calculate the location of the known minimum, shape (d,)."""
         return np.full(d, self.shift)
-
-    def f_opt(self) -> float:
-        """Value of the known minimum."""
-        return 0.0

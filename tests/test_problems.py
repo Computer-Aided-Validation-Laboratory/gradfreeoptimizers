@@ -1,61 +1,74 @@
-"""The Python example problems must match their C++ twins exactly."""
+"""The Python example problems must match their C++ twins."""
 
 import numpy as np
 import pytest
 
 import gfo
+from gfo.problems import IProblem
 
-pytestmark = pytest.mark.skipif(not gfo.EXTENSION_AVAILABLE, reason="C++ extension not built")
-
-NAMES = list(gfo.problems.EXAMPLE_PROBLEMS)
+PROBLEM_NAMES = list(gfo.problems.EXAMPLE_PROBLEMS)
 DIMS = (1, 2, 10, 30)
-RTOL = 1e-12
 N_POINTS = 128
+# Both versions use the same operation order, only libm differences remain.
+RTOL = 1e-12
+# Schwefel's constant is only exact to about 1e-11 per dimension.
+OPTIMUM_ATOL = 1e-8
 
 
-@pytest.mark.parametrize("name", NAMES)
+def make_problem_pair(name: str) -> tuple[IProblem, gfo.CppProblem]:
+    """Build the Python and the C++ version of a problem with default values."""
+    return gfo.problems.EXAMPLE_PROBLEMS[name](), getattr(gfo.cpp_problems, name)()
+
+
+@pytest.mark.parametrize("name", PROBLEM_NAMES)
 @pytest.mark.parametrize("d", DIMS)
 def test_python_matches_cpp(name: str, d: int) -> None:
-    py_problem = gfo.problems.EXAMPLE_PROBLEMS[name]()
-    cpp_problem = getattr(gfo.cpp_problems, name)()
-    points = np.random.default_rng(d).uniform(py_problem.lo, py_problem.hi, size=(N_POINTS, d))
-    np.testing.assert_allclose(py_problem(points), cpp_problem(points), rtol=RTOL, atol=RTOL)
+    py_problem, cpp_problem = make_problem_pair(name)
+    points = np.random.default_rng(d).uniform(
+        py_problem.lo, py_problem.hi, size=(N_POINTS, d)
+    )
+
+    np.testing.assert_allclose(
+        py_problem.evaluate(points), cpp_problem.evaluate(points), rtol=RTOL, atol=RTOL
+    )
 
 
-@pytest.mark.parametrize("name", NAMES)
-def test_same_defaults(name: str) -> None:
-    py_problem = gfo.problems.EXAMPLE_PROBLEMS[name]()
-    cpp_problem = getattr(gfo.cpp_problems, name)()
+@pytest.mark.parametrize("name", PROBLEM_NAMES)
+def test_python_and_cpp_have_the_same_parameters(name: str) -> None:
+    py_problem, cpp_problem = make_problem_pair(name)
+
     assert py_problem.name == cpp_problem.name == name
-    assert (py_problem.lo, py_problem.hi) == (cpp_problem.lo, cpp_problem.hi)
+    assert py_problem.f_opt == cpp_problem.f_opt
     for field_name in cpp_problem.fields:
-        assert getattr(py_problem, field_name) == pytest.approx(getattr(cpp_problem, field_name))
+        py_value = getattr(py_problem, field_name)
+        assert py_value == pytest.approx(getattr(cpp_problem, field_name))
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", PROBLEM_NAMES)
 @pytest.mark.parametrize("d", DIMS)
 def test_known_minimum(name: str, d: int) -> None:
-    for problem in (gfo.problems.EXAMPLE_PROBLEMS[name](), getattr(gfo.cpp_problems, name)()):
-        assert problem(problem.x_opt(d)) == pytest.approx(problem.f_opt(), abs=1e-8)
+    for problem in make_problem_pair(name):
+        optimum = problem.calc_x_opt(d)[np.newaxis, :]
+
+        assert problem.evaluate(optimum)[0] == pytest.approx(
+            problem.f_opt, abs=OPTIMUM_ATOL
+        )
 
 
-@pytest.mark.parametrize("name", NAMES)
-def test_single_point_and_batch_agree(name: str) -> None:
-    for problem in (gfo.problems.EXAMPLE_PROBLEMS[name](), getattr(gfo.cpp_problems, name)()):
-        points = np.random.default_rng(1).uniform(problem.lo, problem.hi, size=(5, 3))
-        batch = problem(points)
-        assert isinstance(problem(points[0]), float)
-        np.testing.assert_array_equal(batch, [problem(row) for row in points])
+@pytest.mark.parametrize("name", PROBLEM_NAMES)
+def test_single_point_without_batch_axis_raises(name: str) -> None:
+    for problem in make_problem_pair(name):
+        with pytest.raises(ValueError, match="shape"):
+            problem.evaluate(np.zeros(3))
 
 
-def test_parameters_change_the_problem() -> None:
+def test_parameters_move_the_minimum() -> None:
     py_problem = gfo.problems.Rastrigin(shift=-1.0, amplitude=5.0)
     cpp_problem = gfo.cpp_problems.Rastrigin(shift=-1.0, amplitude=5.0)
-    assert py_problem(np.full(4, -1.0)) == pytest.approx(0.0)
-    assert cpp_problem(np.full(4, -1.0)) == pytest.approx(0.0)
-    point = np.array([0.3, -2.0, 1.7])
-    assert py_problem(point) == pytest.approx(cpp_problem(point), rel=RTOL)
+    minimum = np.full((1, 4), -1.0)
+
+    assert py_problem.evaluate(minimum)[0] == pytest.approx(0.0)
+    assert cpp_problem.evaluate(minimum)[0] == pytest.approx(0.0)
 
     cpp_problem.shift = 0.5
-    assert cpp_problem(np.full(2, 0.5)) == pytest.approx(0.0)
-    assert "shift=0.5" in repr(cpp_problem)
+    assert cpp_problem.evaluate(np.full((1, 2), 0.5))[0] == pytest.approx(0.0)

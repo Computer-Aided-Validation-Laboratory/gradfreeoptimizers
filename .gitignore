@@ -225,3 +225,4 @@ __marimo__/
 benchmark_results/
 *_post/
 cpp_example_run/
+python_example_run/

@@ -136,20 +136,20 @@ PSOResult optimize_problem(const Problem& problem, size_t d, const std::vector<d
 
 
 /**
- * @brief Evaluate a C++ problem from Python: x of shape (d,) gives a float, X of shape (n, d) gives n values.
+ * @brief Evaluate a C++ problem from Python: points of shape (n, d) give n values.
  */
 template <typename Problem>
-py::object evaluate_problem(const Problem& problem, const InputArray& x){
-    if(x.ndim() == 1){
-        return py::float_(problem(x.data(), static_cast<size_t>(x.shape(0))));
+py::array_t<double> evaluate_problem(const Problem& problem, const InputArray& points){
+    if(points.ndim() != 2){
+        throw py::value_error("Expected points with shape (n, d), got " + std::to_string(points.ndim())
+                              + " dimension(s). Use points[np.newaxis, :] for a single point.");
     }
-    if(x.ndim() != 2) throw py::value_error("Expected x with shape (d,) or X with shape (n, d)");
 
-    const size_t n {static_cast<size_t>(x.shape(0))};
-    const size_t d {static_cast<size_t>(x.shape(1))};
+    const size_t n {static_cast<size_t>(points.shape(0))};
+    const size_t d {static_cast<size_t>(points.shape(1))};
     py::array_t<double> values(static_cast<py::ssize_t>(n));
     double* out {values.mutable_data()};
-    const double* rows {x.data()};
+    const double* rows {points.data()};
     {
         py::gil_scoped_release release;
         for(size_t k = 0; k < n; k++) out[k] = problem(rows + k * d, d);
@@ -161,20 +161,21 @@ py::object evaluate_problem(const Problem& problem, const InputArray& x){
 /**
  * @brief Common Python interface of every C++ example problem.
  *
- * Problem(...) with keyword arguments for every parameter, readable/writable attributes, __call__ (vectorized),
- * x_opt(d), f_opt() and name. The same interface as the Python example problems in gfo.problems.
+ * Problem(...) with keyword arguments for every parameter, readable/writable attributes, evaluate(points)
+ * (shape (n, d) -> (n,)), calc_x_opt(d), f_opt and name. The same interface as the Python example problems in
+ * gfo.problems.
  */
 template <typename Problem>
 py::class_<Problem> bind_problem(py::module_& m, const char* doc, std::vector<std::string> fields){
     py::class_<Problem> cls(m, Problem::name, doc);
     cls.attr("name") = Problem::name;
     cls.attr("fields") = py::cast(fields);
-    cls.def("__call__", &evaluate_problem<Problem>, py::arg("x"),
-            "Evaluate at x of shape (d,) (returns a float) or X of shape (n, d) (returns n values).");
-    cls.def("x_opt", [](const Problem& p, size_t d){
+    cls.attr("f_opt") = Problem{}.f_opt();
+    cls.def("evaluate", &evaluate_problem<Problem>, py::arg("points"),
+            "Evaluate every row of points, shape (n, d). Returns the n values, shape (n,).");
+    cls.def("calc_x_opt", [](const Problem& p, size_t d){
         return to_numpy(std::vector<double>(d, p.x_opt()));
-    }, py::arg("d"), "Location of the known minimum in d dimensions.");
-    cls.def("f_opt", &Problem::f_opt, "Value of the known minimum.");
+    }, py::arg("d"), "Location of the known minimum in d dimensions, shape (d,).");
     cls.def_readwrite("lo", &Problem::lo, "Default lower bound (every dimension).");
     cls.def_readwrite("hi", &Problem::hi, "Default upper bound (every dimension).");
     cls.def("__repr__", [](py::object self){
@@ -365,9 +366,5 @@ PYBIND11_MODULE(_pso, m){
     m.def("optimize_problem", &optimize_problem<problems::Ackley>, py::arg("problem"), py::arg("d"), py::arg("lo"), py::arg("hi"), py::arg("settings") = PSOSettings{}, problem_doc);
     m.def("optimize_problem", &optimize_problem<problems::Griewank>, py::arg("problem"), py::arg("d"), py::arg("lo"), py::arg("hi"), py::arg("settings") = PSOSettings{}, problem_doc);
     m.def("optimize_problem", &optimize_problem<problems::Schwefel>, py::arg("problem"), py::arg("d"), py::arg("lo"), py::arg("hi"), py::arg("settings") = PSOSettings{}, problem_doc);
-
-    //Every C++ problem class, so Python can tell a C++ problem from a Python callable.
-    m.attr("CPP_PROBLEMS") = py::make_tuple(
-        pm.attr("Sphere"), pm.attr("Ellipsoid"), pm.attr("Rosenbrock"), pm.attr("Rastrigin"),
-        pm.attr("Ackley"), pm.attr("Griewank"), pm.attr("Schwefel"));
 }
+

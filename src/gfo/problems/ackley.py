@@ -1,6 +1,7 @@
-"""Ackley example problem. Non-convex, shallow local minima around one narrow basin.
+"""Ackley example problem. Non-convex, shallow local minima around one basin.
 
-f(x) = -a exp(-b sqrt(sum z_k^2 / d)) - exp(sum cos(c z_k) / d) + a + e,   z = x - shift
+f(x) = -a exp(-b sqrt(sum z_k^2 / d)) - exp(sum cos(c z_k) / d) + a + e,
+z = x - shift
 Domain: [-32.768, 32.768]^d. Minimum f = 0 at x_k = shift.
 """
 
@@ -9,12 +10,12 @@ from typing import ClassVar
 
 import numpy as np
 
-from gfo.problems._batch import as_batch, finish_batch
+from gfo.problems.interface import IProblem, validate_points
 
 
 @dataclass(slots=True)
-class Ackley:
-    """Ackley problem (vectorized).
+class Ackley(IProblem):
+    """Ackley problem.
 
     Attributes
     ----------
@@ -27,10 +28,11 @@ class Ackley:
     c : float
         Frequency of the ripples.
     lo, hi : float
-        Default bounds (every dimension).
+        Default bounds, the same in every dimension.
     """
 
     name: ClassVar[str] = "Ackley"
+    f_opt: ClassVar[float] = 0.0
     shift: float = 2.0
     a: float = 20.0
     b: float = 0.2
@@ -38,21 +40,16 @@ class Ackley:
     lo: float = -32.768
     hi: float = 32.768
 
-    def __call__(self, x) -> np.ndarray | float:
-        """Evaluate one point ``(d,)`` (float) or a batch ``(n, d)`` (n values)."""
-        batch, single = as_batch(x)
+    def evaluate(self, points: np.ndarray) -> np.ndarray:
+        """Evaluate every row of ``points``, shape (n, d). Returns shape (n,)."""
+        batch: np.ndarray = validate_points(points)
         dims = float(batch.shape[1])
-        shifted = batch - self.shift
-        mean_square = np.sum(shifted * shifted, axis=1) / dims
-        mean_cos = np.sum(np.cos(self.c * shifted), axis=1) / dims
-        envelope = -self.a * np.exp(-self.b * np.sqrt(mean_square))
-        values = envelope - np.exp(mean_cos) + self.a + np.e
-        return finish_batch(values, single)
+        shifted: np.ndarray = batch - self.shift
+        mean_square: np.ndarray = np.sum(shifted * shifted, axis=1) / dims
+        mean_cos: np.ndarray = np.sum(np.cos(self.c * shifted), axis=1) / dims
+        envelope: np.ndarray = -self.a * np.exp(-self.b * np.sqrt(mean_square))
+        return envelope - np.exp(mean_cos) + self.a + np.e
 
-    def x_opt(self, d: int) -> np.ndarray:
-        """Location of the known minimum in ``d`` dimensions."""
+    def calc_x_opt(self, d: int) -> np.ndarray:
+        """Calculate the location of the known minimum, shape (d,)."""
         return np.full(d, self.shift)
-
-    def f_opt(self) -> float:
-        """Value of the known minimum."""
-        return 0.0

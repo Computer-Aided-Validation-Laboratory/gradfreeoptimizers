@@ -1,63 +1,98 @@
-"""Make the optimizer figures and animations for one run folder.
+"""Make the optimizer figures and animations of one run folder.
 
 Example
 -------
     python scripts/plot_optimizer.py -r run1
-    python scripts/plot_optimizer.py -r run1 --xlabel "Speckle size (px)" --ylabel "Ratio"
+    python scripts/plot_optimizer.py -r run1 --xlabel "Size (px)" --ylabel "Ratio"
+    python scripts/plot_optimizer.py -r run1 --no-animations
 
-Looks for ``run1/optimizer/`` (written by ``gfo.pso(..., run_dir="run1",
+Reads ``run1/optimizer/`` (written by ``gfo.pso(..., run_dir="run1",
 save_loss=True, save_history=True)`` or the C++ optimizer) and saves the
 figures to ``run1_post/optimizer/``. Runs with more than 2 parameters only get
-the loss curve. A run folder with no optimizer data exits with a message.
+the loss curve.
 """
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
-from gfo.post import OptimizerOptions, run_optimizer_post_processing
-from gfo.post.constants import OPT_SUBDIR
+import matplotlib
+
+from gfo import post
+from gfo.optimizer import DEFAULT_OPTIMIZER_DIR
+
+POST_SUFFIX = "_post"  # Default output: <run>_post/optimizer/ next to the run.
+POST_SUBDIR = "optimizer"
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Create the argument parser."""
+def main(argv: list[str] | None = None) -> int:
+    """Parse the arguments, save the figures and report what was saved."""
     parser = argparse.ArgumentParser(
-        description="Plot and animate the optimizer data of a run folder.")
-    parser.add_argument("-r", "--runfolder", required=True,
-                        help="Run folder that contains the optimizer subfolder.")
-    parser.add_argument("--optimizer-dir", default=OPT_SUBDIR,
-                        help=f"Name of the optimizer subfolder (default: {OPT_SUBDIR}).")
-    parser.add_argument("-o", "--output", default=None,
-                        help="Output folder (default: <runfolder>_post/optimizer).")
+        description="Plot and animate the optimizer data of a run folder."
+    )
+    parser.add_argument(
+        "-r",
+        "--run-dir",
+        type=Path,
+        required=True,
+        help="Run folder that contains the optimizer folder.",
+    )
+    parser.add_argument(
+        "--optimizer-dir",
+        default=DEFAULT_OPTIMIZER_DIR,
+        help=f"Name of the optimizer folder (default: {DEFAULT_OPTIMIZER_DIR}).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Output folder (default: <run-dir>_post/optimizer).",
+    )
     parser.add_argument("--xlabel", default="x", help="Label of the first parameter.")
     parser.add_argument("--ylabel", default="y", help="Label of the second parameter.")
-    parser.add_argument("--static-only", action="store_true",
-                        help="Skip the animations (they are the slow part).")
-    parser.add_argument("--animations-only", action="store_true",
-                        help="Skip the static figures.")
-    parser.add_argument("--format", choices=("gif", "mp4"), default="gif",
-                        help="Animation format (mp4 needs ffmpeg, default: gif).")
-    parser.add_argument("--show", action="store_true",
-                        help="Show figures interactively as well as saving.")
-    return parser
-
-
-def main(argv=None) -> int:
-    """Parse arguments and run the workflow. Returns the process exit code."""
-    args = build_parser().parse_args(argv)
-    options = OptimizerOptions(
-        xlabel=args.xlabel,
-        ylabel=args.ylabel,
-        plot_static=not args.animations_only,
-        plot_animations=not args.static_only,
-        animation_format=args.format,
-        save=True,
-        show=args.show,
-        optimizer_dir=args.optimizer_dir,
-        output_dir=Path(args.output) if args.output else None,
+    parser.add_argument(
+        "--no-static", action="store_true", help="Skip the static 2D figures."
     )
-    run_optimizer_post_processing(args.runfolder, options)
-    return 0 if Path(args.runfolder).is_dir() else 1
+    parser.add_argument(
+        "--no-animations",
+        action="store_true",
+        help="Skip the animations (they are the slow part).",
+    )
+    parser.add_argument(
+        "--format",
+        choices=[file_format.name.lower() for file_format in post.EAnimationFormat],
+        default="gif",
+        help="Animation format (mp4 needs ffmpeg, default: gif).",
+    )
+    args = parser.parse_args(argv)
+
+    # Figures are only saved: no GUI backend (works without a display).
+    matplotlib.use("Agg")
+    run_dir: Path = args.run_dir.resolve()
+    output_dir: Path = args.output
+    if output_dir is None:
+        output_dir = run_dir.parent / f"{run_dir.name}{POST_SUFFIX}" / POST_SUBDIR
+
+    animation_format: post.EAnimationFormat | None = None
+    if not args.no_animations:
+        animation_format = post.EAnimationFormat[args.format.upper()]
+
+    print(f"Optimizer post-processing of: {run_dir}")
+    print(f"Saving to: {output_dir}")
+    start: float = time.perf_counter()
+    saved: list[Path] = post.save_optimizer_figures(
+        run_dir / args.optimizer_dir,
+        output_dir,
+        labels=(args.xlabel, args.ylabel),
+        include_static=not args.no_static,
+        animation_format=animation_format,
+    )
+    for path in saved:
+        print(f"Saved: {path}")
+    print(f"Saved {len(saved)} file(s) in {time.perf_counter() - start:.2f} s")
+    return 0
 
 
 if __name__ == "__main__":

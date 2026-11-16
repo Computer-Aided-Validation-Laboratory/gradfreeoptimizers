@@ -9,12 +9,12 @@ from typing import ClassVar
 
 import numpy as np
 
-from gfo.problems._batch import as_batch, finish_batch
+from gfo.problems.interface import IProblem, validate_points
 
 
 @dataclass(slots=True)
-class Rosenbrock:
-    """Rosenbrock problem (vectorized). ``d = 1`` has no terms and gives 0.
+class Rosenbrock(IProblem):
+    """Rosenbrock problem. ``d = 1`` has no terms and gives 0.
 
     Attributes
     ----------
@@ -25,31 +25,28 @@ class Rosenbrock:
     b : float
         Valley steepness.
     lo, hi : float
-        Default bounds (every dimension).
+        Default bounds, the same in every dimension.
     """
 
     name: ClassVar[str] = "Rosenbrock"
+    f_opt: ClassVar[float] = 0.0
     shift: float = 2.0
     a: float = 1.0
     b: float = 100.0
     lo: float = -5.0
     hi: float = 10.0
 
-    def __call__(self, x) -> np.ndarray | float:
-        """Evaluate one point ``(d,)`` (float) or a batch ``(n, d)`` (n values)."""
-        batch, single = as_batch(x)
-        shifted = batch - self.shift
-        current = shifted[:, :-1]
-        following = shifted[:, 1:]
-        valley = following - current * current
-        floor = self.a - current
-        values = np.sum(self.b * valley * valley + floor * floor, axis=1)
-        return finish_batch(values, single)
+    def evaluate(self, points: np.ndarray) -> np.ndarray:
+        """Evaluate every row of ``points``, shape (n, d). Returns shape (n,)."""
+        batch: np.ndarray = validate_points(points)
+        shifted: np.ndarray = batch - self.shift
+        # current, following: shape=(n, d - 1), coordinates k and k + 1.
+        current: np.ndarray = shifted[:, :-1]
+        following: np.ndarray = shifted[:, 1:]
+        valley: np.ndarray = following - current * current
+        floor: np.ndarray = self.a - current
+        return np.sum(self.b * valley * valley + floor * floor, axis=1)
 
-    def x_opt(self, d: int) -> np.ndarray:
-        """Location of the known minimum in ``d`` dimensions."""
+    def calc_x_opt(self, d: int) -> np.ndarray:
+        """Calculate the location of the known minimum, shape (d,)."""
         return np.full(d, self.shift + self.a)
-
-    def f_opt(self) -> float:
-        """Value of the known minimum."""
-        return 0.0

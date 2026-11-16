@@ -9,12 +9,12 @@ from typing import ClassVar
 
 import numpy as np
 
-from gfo.problems._batch import as_batch, finish_batch
+from gfo.problems.interface import IProblem, validate_points
 
 
 @dataclass(slots=True)
-class Griewank:
-    """Griewank problem (vectorized).
+class Griewank(IProblem):
+    """Griewank problem.
 
     Attributes
     ----------
@@ -23,28 +23,28 @@ class Griewank:
     scale : float
         Divisor of the quadratic term (4000 in the standard form).
     lo, hi : float
-        Default bounds (every dimension).
+        Default bounds, the same in every dimension.
     """
 
     name: ClassVar[str] = "Griewank"
+    f_opt: ClassVar[float] = 0.0
     shift: float = 100.0
     scale: float = 4000.0
     lo: float = -600.0
     hi: float = 600.0
 
-    def __call__(self, x) -> np.ndarray | float:
-        """Evaluate one point ``(d,)`` (float) or a batch ``(n, d)`` (n values)."""
-        batch, single = as_batch(x)
-        shifted = batch - self.shift
-        root_index = np.sqrt(np.arange(1, batch.shape[1] + 1, dtype=float))
-        quadratic = np.sum(shifted * shifted / self.scale, axis=1)
-        product = np.prod(np.cos(shifted / root_index), axis=1)
-        return finish_batch(quadratic - product + 1.0, single)
+    def evaluate(self, points: np.ndarray) -> np.ndarray:
+        """Evaluate every row of ``points``, shape (n, d). Returns shape (n,)."""
+        batch: np.ndarray = validate_points(points)
+        shifted: np.ndarray = batch - self.shift
+        # root_index: shape=(d,), sqrt(k + 1) for coordinate k.
+        root_index: np.ndarray = np.sqrt(
+            np.arange(1, batch.shape[1] + 1, dtype=float)
+        )
+        quadratic: np.ndarray = np.sum(shifted * shifted / self.scale, axis=1)
+        product: np.ndarray = np.prod(np.cos(shifted / root_index), axis=1)
+        return quadratic - product + 1.0
 
-    def x_opt(self, d: int) -> np.ndarray:
-        """Location of the known minimum in ``d`` dimensions."""
+    def calc_x_opt(self, d: int) -> np.ndarray:
+        """Calculate the location of the known minimum, shape (d,)."""
         return np.full(d, self.shift)
-
-    def f_opt(self) -> float:
-        """Value of the known minimum."""
-        return 0.0
