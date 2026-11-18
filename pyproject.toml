@@ -36,3 +36,8 @@ gfo = ["*.pyd", "*.so"]
 testpaths = ["tests"]
 # Warnings are failures (style guide, section 5).
 filterwarnings = ["error"]
+# Everything runs by default. Quick local loop: pytest -m "not slow".
+markers = [
+    "slow: takes more than a few seconds (pymoo comparison, C++ example program)",
+    "validation: checks how well the optimizer solves problems, not how it computes",
+]
