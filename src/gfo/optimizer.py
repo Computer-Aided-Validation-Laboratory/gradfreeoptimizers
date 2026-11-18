@@ -1,4 +1,6 @@
-"""Python interface to the C++ particle swarm optimizer.
+"""
+optimizer.py
+Python interface to the C++ particle swarm optimizer.
 
 ``gfo.pso`` picks the evaluation mode from the objective it is given:
 
@@ -20,20 +22,20 @@ import numpy as np
 
 from gfo import _pso
 
-# Defaults of the original C++ optimizer (PSOSettings in src/pso/pso.hpp).
+#### DEFAULTS ####
 # Inertia and accelerations are the Clerc-Kennedy constriction values.
 DEFAULT_PARTICLES = 20
 DEFAULT_ITERATIONS = 100
 DEFAULT_INERTIA = 0.729
 DEFAULT_ACCELERATION = 1.49445
-# Velocity clamp, as a fraction of the domain width (pymoo's meaning).
+# Velocity clamp, as a fraction of the domain width (non-dimensionalized).
 DEFAULT_MAX_VELOCITY_RATE = 0.15
 # Initial velocities are uniform in +/- this fraction of the domain width.
 DEFAULT_INITIAL_VELOCITY_RATE = 0.02
 DEFAULT_SEED = 42
 DEFAULT_OPTIMIZER_DIR = "optimizer"
 
-# Every C++ example problem class. A C++ problem runs fully in C++.
+# Loading the C++ problems. This is done using the union operator.
 CppProblem = (
     _pso.problems.Sphere
     | _pso.problems.Ellipsoid
@@ -44,20 +46,23 @@ CppProblem = (
     | _pso.problems.Schwefel
 )
 
-# A scalar bound applies to every dimension.
+# Specifying the bounds and objective types. Bounds can be a scalar, a sequence of floats.
 Bounds = float | Sequence[float] | np.ndarray
 BatchObjective = Callable[[np.ndarray], np.ndarray]
 PointObjective = Callable[[np.ndarray], float]
 
 
 def validate_integer(value: int, label: str, minimum: int) -> int:
-    """Return ``value`` as an int, raising if it is not an integer >= minimum.
+    """
+    Return ``value`` as an int, raising if it is not an integer >= minimum.
 
     Raises
     ------
     ValueError
         If ``value`` is a bool, not a whole number, or below ``minimum``.
     """
+
+    # Raise required value errors if the type is not int.
     is_bool: bool = isinstance(value, bool)
     if is_bool or int(value) != value or value < minimum:
         raise ValueError(f"{label} must be an integer >= {minimum}, got {value!r}")
@@ -89,13 +94,14 @@ def pso(
     save_loss: bool = False,
     save_history: bool = False,
 ) -> _pso.PSOResult:
-    """Minimize ``objective`` with the C++ particle swarm optimizer.
+    """
+    Minimize ``objective`` with the C++ particle swarm optimizer.
 
-    The search is unitless: bounds and objective must use one consistent
+    The problem is rescaled according to bounds and the search is in the unit hypercube [0, 1]^d : bounds and objective must use one consistent
     system of units.
 
-    Parameters
-    ----------
+    Inputs
+    ------
     objective : callable or C++ problem
         A C++ example problem (``gfo.cpp_problems.*``, runs fully in C++), or
         a Python callable. By default the callable is vectorized: it gets
@@ -114,14 +120,12 @@ def pso(
     n_particles : int
         Swarm size.
     iterations : int
-        Iterations. Every iteration evaluates every particle once, so the
-        budget is ``n_particles * iterations`` evaluations.
+        Self explanatory.
     inertia, acceleration1, acceleration2 : float
         Inertia, cognitive and social coefficients (defaults: Clerc-Kennedy
         constriction values).
     max_velocity_rate : float
-        Velocity clamp as a fraction of the domain width (pymoo's
-        ``max_velocity_rate``).
+        Velocity clamp as a fraction of the domain width. This is important to specify properly otherwise the swarm can blow up very quickly!
     initial_velocity_rate : float
         Initial velocities are uniform in ``[-rate, rate]`` (fraction of the
         domain width). 0 starts the swarm at rest.
@@ -170,7 +174,8 @@ def pso(
         in some dimension, or a vectorized objective returns the wrong number
         of values.
     """
-    # Check everything cheap before the run starts.
+
+    # Check if we are working with a CPP sample problem or anything callable.
     is_cpp_problem: bool = isinstance(objective, CppProblem)
     if not is_cpp_problem and not callable(objective):
         raise TypeError(
@@ -178,7 +183,9 @@ def pso(
             f"got {type(objective).__name__}"
         )
     if is_cpp_problem and not vectorized:
-        raise ValueError("vectorized=False only applies to Python objectives")
+        raise ValueError(
+            "vectorized=False only applies to Python objectives, Don't use it with a C++ problem!"
+        )
 
     # lo_array, hi_array: shape=(1,) for a scalar bound, (d,) otherwise.
     lo_array: np.ndarray = np.atleast_1d(np.asarray(lo, dtype=float))
@@ -192,6 +199,7 @@ def pso(
     else:
         dims = validate_integer(d, "d", minimum=1)
 
+    # Loop over the bounds and check if they are valid. If not, raise a ValueError.
     for label, bound in (("lo", lo_array), ("hi", hi_array)):
         is_valid_size: bool = bound.size in (1, dims)
         if bound.ndim != 1 or not is_valid_size:
@@ -199,9 +207,12 @@ def pso(
                 f"{label} must be a number or a sequence of d = {dims} numbers, "
                 f"got shape {bound.shape}"
             )
+
+    # Type hinting the lists for the C++ interface. They are always of length d, even if the bounds are scalars.
     lo_list: list[float] = np.broadcast_to(lo_array, (dims,)).tolist()
     hi_list: list[float] = np.broadcast_to(hi_array, (dims,)).tolist()
 
+    # Interface with the C++ optimizer while validating the inputs.
     settings = _pso.PSOSettings()
     settings.particles = validate_integer(n_particles, "n_particles", minimum=1)
     settings.iterations = validate_integer(iterations, "iterations", minimum=0)
@@ -225,13 +236,14 @@ def pso(
     settings.save_loss = bool(save_loss)
     settings.save_history = bool(save_history)
 
+    # Run the optimizer for C++ problems or vectorized objectives. This is easier to do.
     if is_cpp_problem:
         return _pso.optimize_problem(objective, dims, lo_list, hi_list, settings)
     if vectorized:
         return _pso.optimize_python(objective, dims, lo_list, hi_list, settings)
 
+    # Helper function for the non-vectorized case. It evaluates the objective one row at a time.
     def evaluate_rows(points: np.ndarray) -> np.ndarray:
-        # One Python call per particle, like pymoo's ElementwiseProblem.
         # points: shape=(n, d), values: shape=(n,).
         values: np.ndarray = np.empty(points.shape[0])
         for ii in range(points.shape[0]):

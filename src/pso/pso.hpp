@@ -13,7 +13,7 @@
  *
  * Both share the same swarm update, so for the same seed they visit exactly the same points.
  *
- * @version 0.3
+ * @version 0.1
  * @date 2026-11-16
  *
  * @copyright Copyright (c) 2026
@@ -93,7 +93,7 @@ struct GBSwarmTopology {
  *      settings.iterations = 500;
  *      settings.verbose = true;
  *
- * The defaults reproduce the original optimizer (v0.2) exactly.
+ * The defaults reproduce the original optimizer (v0.1) exactly.
  */
 struct PSOSettings {
     int iterations {100};                   //Iterations to run the loop for.
@@ -204,12 +204,15 @@ void reflect_unit(double& x, double& v);
 //INTERNALS. Shared by run_pso and run_pso_batch, not meant to be called directly.
 namespace pso_detail {
 
+//Setting an alias for clock.
 using Clock = std::chrono::steady_clock;
 
+//Helper function for getting a duration.
 inline double seconds_between(Clock::time_point start, Clock::time_point end){
     return std::chrono::duration<double>(end - start).count();
 }
 
+//Helper function to resolve threads. This sets 0 requested threads as the OpenMP default, and returns 1 if OpenMP is not available.
 inline int resolve_threads(int requested){
 #ifdef _OPENMP
     return requested > 0 ? requested : omp_get_max_threads();
@@ -220,18 +223,20 @@ inline int resolve_threads(int requested){
 }
 
 /**
- * @brief Velocity and position update of one particle, then map it to physical coordinates.
+ * @brief Velocity and position update of one particle mapped to physical coordinates.
  *
- * This is the body of the original particle loop, unchanged. Every (iteration, particle) pair gets its own generator,
- * seeded from the run seed, so the numbers drawn do not depend on how many threads run or which one gets the particle.
+ * This is the main update function. 
+ * Every (iteration, particle) pair gets its own generator, seeded from the run seed to keep it thread safe.
  */
-inline void move_particle(GBSwarmTopology& swarmState, size_t n_, int i, const PSOSettings& settings,
-                          const std::vector<double>& lo_, const std::vector<double>& hi_, double* xphys){
+inline void update_particle(GBSwarmTopology& swarmState, size_t n_, int i, const PSOSettings& settings,
+                            const std::vector<double>& lo_, const std::vector<double>& hi_, double* xphys){
 
     const size_t d {swarmState.d};
     const unsigned long long seed {settings.seed};
     const double vmax {settings.max_velocity_rate};
 
+    //Random Number Generator.
+    //This guy takes a seed and shuffles its bits around deterministically to create a unique seed for every instance.
     std::seed_seq seed_sequence{
         static_cast<std::uint32_t>(seed),
         static_cast<std::uint32_t>(seed >> 32),
@@ -244,6 +249,7 @@ inline void move_particle(GBSwarmTopology& swarmState, size_t n_, int i, const P
     //Loop over dimensions.
     for(size_t d_ = 0; d_ < d; d_++){
 
+        //This index is the usual 1D flattened array logic.
         size_t index {n_ * d + d_};
 
         double cognitive_influence = swarmState.pbest_pos[index] - swarmState.pos[index];
@@ -291,6 +297,8 @@ inline void update_personal_best(GBSwarmTopology& swarmState, size_t n_, double 
  */
 inline void update_global_best(GBSwarmTopology& swarmState){
     const size_t d {swarmState.d};
+
+    //Loop over all particles, check personal best to current gbest, and update if necessary.
     for(size_t n_ = 0; n_ < swarmState.n; n_++){
         if(swarmState.pbest_val[n_] < swarmState.gbest_val){
             swarmState.gbest_val = swarmState.pbest_val[n_];
@@ -353,6 +361,7 @@ inline void validate_and_build_bounds(size_t d, const std::vector<double>& lo, c
     lo_.assign(d, 0.0);
     hi_.assign(d, 1.0);
     if(!settings.default_bounds){
+        
         //Size mismatch arguments.
         if(lo.size() != d || hi.size() != d)
             throw std::invalid_argument("Lower bound and upper bound arrays must have d entries");
@@ -371,14 +380,14 @@ inline void validate_and_build_bounds(size_t d, const std::vector<double>& lo, c
 /**
  * @brief The PSO loop shared by both evaluation modes.
  *
- * Batch == false: evaluate is a C++ objective double(const double* x, size_t d). The particle update and the objective
- *                 run together in one parallel loop, exactly like the original optimizer.
- * Batch == true : evaluate is double(const double* X, size_t n, size_t d, double* f). It fills f[0..n) for the n x d
+ * Batch == false: objective is a C++ objective double(const double* x, size_t d). The particle update and the objective
+ *                 run together in one parallel loop.
+ * Batch == true : objective is double(const double* X, size_t n, size_t d, double* f). It fills f[0..n) for the n x d
  *                 row-major positions in X and returns the seconds spent inside the objective itself (or a negative
  *                 number if it did not measure it). It is called from one thread, outside any parallel region.
  */
-template <bool Batch, typename Evaluate>
-PSOResult run_engine(Evaluate& evaluate, size_t d, const std::vector<double>& lo, const std::vector<double>& hi,
+template <bool Batch, typename Objective>
+PSOResult run_engine(Objective& objective, size_t d, const std::vector<double>& lo, const std::vector<double>& hi,
                      const PSOSettings& settings, const PSOIterationHook& on_iteration){
 
     const auto run_start {Clock::now()};
@@ -419,6 +428,7 @@ PSOResult run_engine(Evaluate& evaluate, size_t d, const std::vector<double>& lo
     const std::filesystem::path optimizerDir {std::filesystem::path(settings.run_dir) / settings.optimizer_dir};
 
     //Setup history and domain tracking for 2D.
+    //This will create a file if it doesn't exist, but if the folder doesn't exist it will throw an error.
     const bool trackHistory {d == 2 && settings.save_history};
     std::ofstream histFile;
     if(trackHistory){
@@ -474,9 +484,9 @@ PSOResult run_engine(Evaluate& evaluate, size_t d, const std::vector<double>& lo
                 double* x {&xphys[n_ * d]};
                 if(diag){
                     const auto t0 {Clock::now()};
-                    move_particle(swarmState, n_, i, settings, lo_, hi_, x);
+                    update_particle(swarmState, n_, i, settings, lo_, hi_, x);
                     const auto t1 {Clock::now()};
-                    double f_val = evaluate(static_cast<const double*>(x), d);
+                    double f_val = objective(static_cast<const double*>(x), d);
                     const auto t2 {Clock::now()};
                     fvals[n_] = f_val;
                     update_personal_best(swarmState, n_, f_val);
@@ -484,8 +494,8 @@ PSOResult run_engine(Evaluate& evaluate, size_t d, const std::vector<double>& lo
                     objective_acc += seconds_between(t1, t2);
                 }
                 else{
-                    move_particle(swarmState, n_, i, settings, lo_, hi_, x);
-                    double f_val = evaluate(static_cast<const double*>(x), d);
+                    update_particle(swarmState, n_, i, settings, lo_, hi_, x);
+                    double f_val = objective(static_cast<const double*>(x), d);
                     fvals[n_] = f_val;
                     update_personal_best(swarmState, n_, f_val);
                 }
@@ -498,13 +508,13 @@ PSOResult run_engine(Evaluate& evaluate, size_t d, const std::vector<double>& lo
             //Move every particle in parallel, then hand the whole swarm to the batch objective in one call.
             #pragma omp parallel for schedule(static, 1) num_threads(threads)
             for(size_t n_ = 0; n_ < n; n_++){
-                move_particle(swarmState, n_, i, settings, lo_, hi_, &xphys[n_ * d]);
+                update_particle(swarmState, n_, i, settings, lo_, hi_, &xphys[n_ * d]);
             }
             const auto t_moved {Clock::now()};
             swarm_s = seconds_between(iter_start, t_moved);
             update_s = swarm_s;
 
-            double inner {evaluate(static_cast<const double*>(xphys.data()), n, d, fvals.data())};
+            double inner {objective(static_cast<const double*>(xphys.data()), n, d, fvals.data())};
             const auto t_evaluated {Clock::now()};
             evaluate_s = seconds_between(t_moved, t_evaluated);
             objective_s = inner >= 0.0 ? inner : evaluate_s;
@@ -714,7 +724,7 @@ PSOResult run_pso_batch(BatchObjective f, size_t d, const std::vector<double>& l
 
 
 /**
- * @brief Standard Particle Swarm Optimizer, original (v0.2) call signature.
+ * @brief Standard Particle Swarm Optimizer, original (v0.1) call signature.
  *
  * Kept so existing code still compiles. It forwards to run_pso, see PSOSettings for what every argument means.
  *

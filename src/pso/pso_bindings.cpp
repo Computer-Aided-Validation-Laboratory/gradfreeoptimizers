@@ -14,7 +14,7 @@
  *
  * Build with scripts/build.py, which puts the module in src/gfo/. Most users call gfo.pso(...) instead of these directly.
  *
- * @version 0.3
+ * @version 0.1
  * @date 2026-11-16
  *
  * @copyright Copyright (c) 2026
@@ -219,7 +219,7 @@ PYBIND11_MODULE(_pso, m){
 #endif
 
     //SETTINGS.
-    py::class_<PSOSettings>(m, "PSOSettings", "Settings for one PSO run. Every field has a default (the original v0.2 values).")
+    py::class_<PSOSettings>(m, "PSOSettings", "Settings for one PSO run. Every field has a default (the original v0.1 values).")
         .def(py::init<>())
         .def_readwrite("iterations", &PSOSettings::iterations)
         .def_readwrite("particles", &PSOSettings::particles)

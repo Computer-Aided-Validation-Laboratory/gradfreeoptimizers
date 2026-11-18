@@ -5,7 +5,7 @@
  *
  * The Python binding lives in pso_bindings.cpp.
  *
- * @version 0.3
+ * @version 0.1
  * @date 2026-11-16
  *
  * @copyright Copyright (c) 2026
