@@ -218,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# gradfreeoptimizers: compiled extension, C++ example and run outputs.
+*.pyd
+*.exe
+benchmark_results/
+*_post/
+cpp_example_run/
+python_example_run/

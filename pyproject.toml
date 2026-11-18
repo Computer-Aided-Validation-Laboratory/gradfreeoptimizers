@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gradfreeoptimizers"
+version = "0.1.0"
+description = "A C++ powered collection of gradient free optimizers with a Python interface."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Lavya D. Ghanwat" }]
+dependencies = [
+    "numpy>=1.24",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+# Needed by scripts/build.py to compile the C++ extension (gfo._pso).
+build = ["pybind11>=2.12"]
+# Needed by scripts/benchmark_pymoo.py.
+benchmark = ["pymoo>=0.6.1"]
+dev = ["pytest>=7.4"]
+all = ["gradfreeoptimizers[build,benchmark,dev]"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["gfo*"]
+
+[tool.setuptools.package-data]
+# The compiled extension is built in place by scripts/build.py.
+gfo = ["*.pyd", "*.so"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Warnings are failures (style guide, section 5).
+filterwarnings = ["error"]
