@@ -36,8 +36,8 @@ class IProblem(ABC):
     def evaluate(self, points: np.ndarray) -> np.ndarray:
         """Evaluate every row of ``points``.
 
-        Parameters
-        ----------
+        Inputs
+        ------
         points : np.ndarray
             Points to evaluate, shape (n, d), dtype float64. Axis 0 is the
             point, axis 1 the coordinate. ``points`` is not modified.
@@ -57,8 +57,8 @@ class IProblem(ABC):
     def calc_x_opt(self, d: int) -> np.ndarray:
         """Calculate the location of the known minimum.
 
-        Parameters
-        ----------
+        Inputs
+        ------
         d : int
             Number of dimensions.
 
@@ -74,8 +74,8 @@ def validate_points(points: np.ndarray) -> np.ndarray:
 
     No copy is made when ``points`` is already a float64 array.
 
-    Parameters
-    ----------
+    Inputs
+    ------
     points : np.ndarray
         Points, shape (n, d).
 

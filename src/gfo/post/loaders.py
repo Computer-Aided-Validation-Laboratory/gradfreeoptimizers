@@ -48,6 +48,8 @@ class OptimizerHistory:
         (np.ndarray, np.ndarray)
             x and y of the global best, shape (n_iter,) each.
         """
+
+        #Type hinting for clarity, not for performance. The arrays are small enough that the overhead of np.arange and np.argmin is negligible.
         rows: np.ndarray = np.arange(self.f.shape[0])
         best_particle: np.ndarray = np.argmin(self.f, axis=1)
         iter_x: np.ndarray = self.x[rows, best_particle]
@@ -79,8 +81,8 @@ class OptimizerLoss:
 def read_csv_columns(path: Path, columns: tuple[str, ...]) -> np.ndarray:
     """Read the named columns of a numeric CSV file with a header row.
 
-    Parameters
-    ----------
+    Inputs
+    ------
     path : Path
         CSV file.
     columns : tuple of str
@@ -118,8 +120,8 @@ def read_csv_columns(path: Path, columns: tuple[str, ...]) -> np.ndarray:
 def load_history(optimizer_dir: Path) -> OptimizerHistory:
     """Load the particle history of a 2D run.
 
-    Parameters
-    ----------
+    Inputs
+    ------
     optimizer_dir : Path
         Optimizer folder of the run, ``<run_dir>/<optimizer_dir>``, holding
         ``history.csv`` and ``domain.csv`` (written by
@@ -169,8 +171,8 @@ def load_history(optimizer_dir: Path) -> OptimizerHistory:
 def load_loss(optimizer_dir: Path) -> OptimizerLoss:
     """Load the global best loss history of a run (any dimension).
 
-    Parameters
-    ----------
+    Inputs
+    ------
     optimizer_dir : Path
         Optimizer folder of the run, ``<run_dir>/<optimizer_dir>``, holding
         ``loss.csv`` (written by ``gfo.pso(..., save_loss=True)``).

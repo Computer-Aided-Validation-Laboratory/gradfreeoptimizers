@@ -42,8 +42,8 @@ def save_optimizer_figures(
     also get the trajectory and contour figures and the animations. The
     function is silent and closes every figure it makes.
 
-    Parameters
-    ----------
+    Inputs
+    ------
     optimizer_dir : Path
         Optimizer folder of the run, ``<run_dir>/<optimizer_dir>`` of
         ``gfo.pso``.

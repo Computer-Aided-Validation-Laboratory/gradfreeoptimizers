@@ -66,8 +66,8 @@ def build_triangulation(
     very different scales, e.g. size in px against a ratio) and then reused
     with the physical coordinates. Repeated positions are dropped.
 
-    Parameters
-    ----------
+    Inputs
+    ------
     x, y : np.ndarray
         Particle coordinates, shape (n_points,).
     domain : tuple of float
@@ -225,8 +225,8 @@ def plot_loss_contour(
     When there are too few distinct particle positions to triangulate, only
     the particles are drawn.
 
-    Parameters
-    ----------
+    Inputs
+    ------
     history : OptimizerHistory
         Particle history of a 2D run.
     labels : tuple of str

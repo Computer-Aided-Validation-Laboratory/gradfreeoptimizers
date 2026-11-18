@@ -1,8 +1,9 @@
 """Constants of the post-processing package.
 
 File and column names mirror what the C++ optimizer (src/pso/pso.hpp) writes
-in ``<run_dir>/<optimizer_dir>/``. If the backend naming changes, this is the
-only place that needs editing.
+in ``<run_dir>/<optimizer_dir>/``. 
+
+If the backend naming changes, this is the only place that needs editing.
 """
 
 HISTORY_FILENAME = "history.csv"  # Only written for 2D runs.

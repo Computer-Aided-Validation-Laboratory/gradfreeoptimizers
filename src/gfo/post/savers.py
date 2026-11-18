@@ -22,8 +22,8 @@ def save_figure(fig: Figure, path: Path) -> None:
 
     The figure is left open: close it with ``plt.close(fig)`` when done.
 
-    Parameters
-    ----------
+    Inputs
+    ------
     fig : Figure
         Finished figure.
     path : Path
@@ -37,8 +37,8 @@ def save_figure(fig: Figure, path: Path) -> None:
 def save_animation(anim: FuncAnimation, path: Path) -> None:
     """Render and save an animation, creating the parent folder if needed.
 
-    Parameters
-    ----------
+    Inputs
+    ------
     anim : FuncAnimation
         Finished animation.
     path : Path
