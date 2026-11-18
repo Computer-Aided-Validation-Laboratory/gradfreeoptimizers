@@ -1,5 +1,6 @@
 """Post-processing of saved optimizer runs."""
 
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +8,7 @@ import pytest
 
 import gfo
 from gfo import post
+from pso_testing import SwarmBests, SwarmRecorder, replay_bests
 
 N_PARTICLES = 12
 ITERATIONS = 30
@@ -42,6 +44,70 @@ def test_load_history_matches_the_run(run_2d: tuple[Path, gfo.PSOResult]) -> Non
     np.testing.assert_allclose(
         history.calc_best_so_far(), result.loss_history, rtol=CSV_RTOL
     )
+
+
+def test_load_history_returns_every_evaluated_point(tmp_path: Path) -> None:
+    recorder = SwarmRecorder(gfo.problems.Ackley().evaluate)
+    gfo.pso(
+        recorder.evaluate,
+        [-32.768, -10.0],
+        [32.768, 5.0],
+        n_particles=N_PARTICLES,
+        iterations=ITERATIONS,
+        run_dir=tmp_path,
+        save_history=True,
+    )
+    history = post.load_history(tmp_path / "optimizer")
+    points = recorder.stack_points()
+
+    assert history.domain == (-32.768, 32.768, -10.0, 5.0)
+    np.testing.assert_allclose(history.x, points[:, :, 0], rtol=CSV_RTOL)
+    np.testing.assert_allclose(history.y, points[:, :, 1], rtol=CSV_RTOL)
+
+
+def save_recorded_2d_run(
+    tmp_path: Path, objective: Callable[[np.ndarray], np.ndarray]
+) -> tuple[post.OptimizerHistory, SwarmBests]:
+    """Save a 2D run on [-5, 5]^2: its loaded history and its replayed bests."""
+    recorder = SwarmRecorder(objective)
+    gfo.pso(
+        recorder.evaluate,
+        -5.0,
+        5.0,
+        d=2,
+        n_particles=N_PARTICLES,
+        iterations=ITERATIONS,
+        seed=1,
+        run_dir=tmp_path,
+        save_history=True,
+    )
+    bests = replay_bests(recorder.stack_points(), recorder.stack_values())
+    return post.load_history(tmp_path / "optimizer"), bests
+
+
+def test_best_path_follows_the_optimizer(tmp_path: Path) -> None:
+    history, bests = save_recorded_2d_run(tmp_path, gfo.problems.Ackley().evaluate)
+    best_x, best_y = history.calc_best_path()
+
+    np.testing.assert_allclose(best_x, bests.gbest_pos[:, 0], rtol=CSV_RTOL)
+    np.testing.assert_allclose(best_y, bests.gbest_pos[:, 1], rtol=CSV_RTOL)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "calc_best_path moves to a later point on an exact tie (<=), the "
+        "optimizer keeps the earliest best (<)"
+    ),
+)
+def test_best_path_follows_the_optimizer_on_ties(tmp_path: Path) -> None:
+    history, bests = save_recorded_2d_run(
+        tmp_path, lambda points: np.sum(np.floor(np.abs(points - 0.3) * 4.0), axis=1)
+    )
+    best_x, best_y = history.calc_best_path()
+
+    np.testing.assert_allclose(best_x, bests.gbest_pos[:, 0], rtol=CSV_RTOL)
+    np.testing.assert_allclose(best_y, bests.gbest_pos[:, 1], rtol=CSV_RTOL)
 
 
 def test_load_loss_matches_the_run(run_2d: tuple[Path, gfo.PSOResult]) -> None:
